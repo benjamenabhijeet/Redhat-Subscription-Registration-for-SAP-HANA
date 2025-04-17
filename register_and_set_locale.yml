@@ -1,0 +1,53 @@
+---
+- name: Set system locale and register with Red Hat Subscription Manager
+  hosts: all
+  become: true
+  vars:
+    # RHSM Credentials (use one of these options)
+    rhsm_username: ""  # Red Hat username for registration
+    rhsm_password: ""  # Red Hat password for registration
+    rhsm_activationkey: ""  # Activation key for registration
+    rhsm_org_id: ""  # Organization ID for registration (needed for activation key)
+    
+    rhsm_auto_attach: true  # Automatically attach a subscription
+    rhsm_force_register: true  # Force unregister if system is already registered
+    system_locale: "C.UTF-8"  # Locale to set
+
+  tasks:
+
+    - name: Set system locale in /etc/locale.conf
+      lineinfile:
+        path: /etc/locale.conf
+        regexp: '^LANG='
+        line: "LANG={{ system_locale }}"
+        create: yes
+
+    - name: Optionally export LC_ALL in /etc/profile.d/locale.sh
+      lineinfile:
+        path: /etc/profile.d/locale.sh
+        line: "export LC_ALL={{ system_locale }}"
+        create: yes
+
+    - name: Unregister system if already registered
+      command: subscription-manager unregister
+      when: rhsm_force_register
+      ignore_errors: true
+
+    - name: Register using username/password
+      command: >
+        subscription-manager register
+        --username={{ rhsm_username }}
+        --password={{ rhsm_password }}
+        {% if rhsm_auto_attach %}--auto-attach{% endif %}
+      when: rhsm_activationkey == "" and rhsm_username != "" and rhsm_password != ""
+      register: reg_output
+      changed_when: "'The system has been registered' in reg_output.stdout"
+
+    - name: Register using activation key
+      command: >
+        subscription-manager register
+        --activationkey={{ rhsm_activationkey }}
+        --org={{ rhsm_org_id }}
+      when: rhsm_activationkey != "" and rhsm_org_id != ""
+      register: reg_output
+      changed_when: "'The system has been registered' in reg_output.stdout"
